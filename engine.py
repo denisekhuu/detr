@@ -5,7 +5,7 @@ Train and eval functions used in main.py
 import math
 import os
 import sys
-from typing import Iterable
+from typing import Iterable, List
 
 import torch
 
@@ -14,9 +14,11 @@ from datasets.coco_eval import CocoEvaluator
 from datasets.panoptic_eval import PanopticEvaluator
 
 
+import random
+
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, max_norm: float = 0):
+                    device: torch.device, epoch: int, max_norm: float = 0, heads:List[int]|None=None, effective_heads:int|None=None) -> None:
     model.train()
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -28,8 +30,17 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+        if heads is not None:
+            # TODO: add weighted choice
+            # Select effective heads randomly from available heads
+            effective_heads = random.choice(heads)
+        
+        if effective_heads is not None or heads is not None:
+            print(f"Using effective heads: {effective_heads}")
+            outputs = model(samples, effective_heads=effective_heads)
+        else:
+            outputs = model(samples)
 
-        outputs = model(samples)
         loss_dict = criterion(outputs, targets)
         weight_dict = criterion.weight_dict
         losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
