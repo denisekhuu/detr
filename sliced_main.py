@@ -8,14 +8,16 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader, DistributedSampler, Subset
 
 import datasets
 import util.misc as utils
 from datasets import build_dataset, get_coco_api_from_dataset
 from engine import evaluate, train_one_epoch
-from models import build_model
+from sliced_models import build_model
 import datetime
+
+#python sliced_main.py --temp --batch_size 2 --epochs 1 --lr_drop 1 --output_dir ../temp/temp_output --coco_path C:/workspace/ml/data/coco
 
 
 def get_args_parser():
@@ -84,6 +86,8 @@ def get_args_parser():
     parser.add_argument('--coco_path', type=str)
     parser.add_argument('--coco_panoptic_path', type=str)
     parser.add_argument('--remove_difficult', action='store_true')
+    parser.add_argument('--temp', action='store_true',
+                        help='Temporarily reduce dataset to 10 batches for testing')
 
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -158,6 +162,14 @@ def main(args):
 
     dataset_train = build_dataset(image_set='train', args=args)
     dataset_val = build_dataset(image_set='val', args=args)
+
+    # Temporarily reduce dataset to 10 batches for testing
+    if args.temp:
+        num_samples_train = 10 * args.batch_size
+        num_samples_val = 10 * args.batch_size
+        dataset_train = Subset(dataset_train, list(range(min(num_samples_train, len(dataset_train)))))
+        dataset_val = Subset(dataset_val, list(range(min(num_samples_val, len(dataset_val)))))
+        print(f"Temp mode: Reduced training dataset to {len(dataset_train)} samples, validation dataset to {len(dataset_val)} samples")
 
     if args.distributed:
         print("Using distributed samplers")
