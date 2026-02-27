@@ -59,8 +59,10 @@ class SlicedDETR(nn.Module):
         assert mask is not None
         
     
-        d_active = self.transformer.d_model // effective_heads if effective_heads is not None else self.transformer.d_model
-        hs = self.transformer(self.input_proj(src, d_out=d_active), mask, self.query_embed.weight, pos[-1], effective_heads=effective_heads)[0]
+        head_dim = self.transformer.d_model // self.transformer.nhead
+        d_active = effective_heads * head_dim if effective_heads is not None else self.transformer.d_model
+        pos_active = pos[-1][:, :d_active, :, :] if effective_heads is not None else pos[-1]
+        hs = self.transformer(self.input_proj(src, d_out=d_active), mask, self.query_embed.weight, pos_active, effective_heads=effective_heads)[0]
 
         if effective_heads is not None:
             outputs_class = self.class_embed(hs, in_feature=hs.size(-1))

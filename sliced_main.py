@@ -13,11 +13,12 @@ from torch.utils.data import DataLoader, DistributedSampler, Subset
 import datasets
 import util.misc as utils
 from datasets import build_dataset, get_coco_api_from_dataset
-from engine import evaluate, train_one_epoch
+from sliced_models.training.engine import train_one_epoch, evaluate
 from sliced_models import build_model
 import datetime
 
-#python sliced_main.py --temp --batch_size 2 --epochs 1 --lr_drop 1 --output_dir ../temp/temp_output --coco_path C:/workspace/ml/data/coco
+#python sliced_main.py --temp --hidden_dim 128 --dim_feedforward 1024 --nheads 4 --batch_size 2 --epochs 1 --lr_drop 1 --output_dir ../temp/temp_output --coco_path C:/workspace/ml/data/coco --resume https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth --eval
+#python sliced_main.py --temp --hidden_dim 128 --dim_feedforward 1024 --nheads 4 --batch_size 2 --epochs 1 --lr_drop 1 --output_dir ../temp/temp_output --coco_path C:/workspace/ml/data/coco --eval
 
 
 def get_args_parser():
@@ -104,6 +105,12 @@ def get_args_parser():
     parser.add_argument('--world_size', default=1, type=int,
                         help='number of distributed processes')
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
+
+    # Sliced DETR parameters
+    parser.add_argument('--head_stride', default=1, type=int,
+                        help="Stride for effective heads. For example, with nheads=8 and head_stride=2, we will evaluate the model with 4 effective heads (i.e. half of the full model).")
+    parser.add_argument('--start_heads', default=1, type=int,
+                        help="Number of attention heads to start with. For example, with nheads=8 and start_heads=4, we will start training with 4 effective heads.")
     return parser
 
 
@@ -225,9 +232,12 @@ def main(args):
                 'args': args,
             }, checkpoint_path)
 
+    heads = [i for i in range(args.start_heads, args.nheads + 1, args.head_stride)]
+    print("Effective heads:", heads)
+
     if args.eval:
         test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
-                                              data_loader_val, base_ds, device, args.output_dir)
+                                              data_loader_val, base_ds, device, args.output_dir, heads=heads)
         if args.output_dir:
             utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
         return
@@ -240,7 +250,7 @@ def main(args):
             sampler_train.set_epoch(epoch)
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch,
-            args.clip_max_norm)
+            args.clip_max_norm, heads=heads)
         lr_scheduler.step()
         if args.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
@@ -257,7 +267,7 @@ def main(args):
                 }, checkpoint_path)
 
         test_stats, coco_evaluator = evaluate(
-            model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir
+            model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir, heads=heads
         )
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
