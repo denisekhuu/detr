@@ -57,18 +57,25 @@ def addmm_flop_jit(
 
 
 def bmm_flop_jit(inputs, outputs):
-    # Count flop for nn.Linear
-    # inputs is a list of length 3.
+    """Flop counter for aten::bmm and aten::matmul with 3-D inputs."""
     input_shapes = [get_shape(v) for v in inputs]
-    # input_shapes[0]: [batch size, input feature dimension]
-    # input_shapes[1]: [batch size, output feature dimension]
-    assert len(input_shapes[0]) == 3
-    assert len(input_shapes[1]) == 3
-    T, batch_size, input_dim = input_shapes[0]
-    output_dim = input_shapes[1][2]
-    flop = T * batch_size * input_dim * output_dim
-    flop_counter = Counter({"bmm": flop})
-    return flop_counter
+    # shapes: (B, M, K) and (B, K, N)
+    assert len(input_shapes) == 2
+    a, b = input_shapes[0], input_shapes[1]
+    # support both 2-D and 3-D (batch) matmul
+    if len(a) == 3 and len(b) == 3:
+        B, M, K = a
+        _, K2, N = b
+    elif len(a) == 2 and len(b) == 2:
+        M, K = a
+        K2, N = b
+        B = 1
+    else:
+        raise ValueError(f"Unexpected matmul shapes: {a}, {b}")
+    assert K == K2
+    flop = B * M * K * N
+    return Counter({"matmul": flop})
+
 
 
 def basic_binary_op_flop_jit(inputs, outputs, name):
@@ -244,11 +251,21 @@ def matmul_flop_jit(
     # Inputs contains the shapes of two matrices.
     input_shapes = [get_shape(v) for v in inputs]
     assert len(input_shapes) == 2
-    assert len(input_shapes[1]) == 2
-    assert input_shapes[0][-1] == input_shapes[1][0]
-    batch_dim = input_shapes[0][0]
-    m1_dim, m2_dim = input_shapes[1]
-    flop = m1_dim * m2_dim * batch_dim
+    a, b = input_shapes[0], input_shapes[1]
+    assert a[-1] == b[-2] if len(b) >= 2 else a[-1] == b[0]
+    if len(a) == 3 and len(b) == 3:
+        # Batched matmul: (B, M, K) x (B, K, N) -> (B, M, N)
+        B, M, K = a
+        _, _, N = b
+        flop = B * M * K * N
+    elif len(a) == 2 and len(b) == 2:
+        # Standard 2D matmul: (M, K) x (K, N) -> (M, N)
+        M, K = a
+        K, N = b
+        flop = M * K * N
+    else:
+        # General case: batch dims are all but last two
+        flop = prod(a) * b[-1]
     flop_counter = Counter({"matmul": flop})
     return flop_counter
 
@@ -304,6 +321,65 @@ def linear_flop_jit(
     flop_counter = Counter({"linear": flop})
     return flop_counter
 
+
+def baddbmm_flop_jit(
+    inputs: typing.List[object], outputs: typing.List[object]
+) -> typing.Counter[str]:
+    """
+    Count flops for baddbmm: output = input + beta * (mat1 @ mat2)
+    Args:
+        inputs (list(torch._C.Value)): JIT values for baddbmm operation.
+        outputs (list(torch._C.Value)): The output shape.
+    Returns:
+        Counter: A Counter dictionary that records the number of flops.
+    """
+    # baddbmm inputs: self, mat1, mat2, beta, alpha
+    try:
+        input_shape = get_shape(inputs[0])  # input
+        mat1_shape = get_shape(inputs[1])   # mat1
+        mat2_shape = get_shape(inputs[2])   # mat2
+        
+        # Expected shapes:
+        # input: [b, n, m]
+        # mat1: [b, n, p]
+        # mat2: [b, p, m]
+        # output: [b, n, m]
+        
+        if len(mat1_shape) == 3 and len(mat2_shape) == 3:
+            b, n, p = mat1_shape
+            m = mat2_shape[-1]
+            # Matrix multiplication: b * n * p * m
+            # Addition: b * n * m
+            flop = b * n * p * m + b * n * m
+            flop_counter = Counter({"baddbmm": flop})
+            return flop_counter
+    except:
+        pass
+    
+    return Counter({"baddbmm": 0})
+
+
+def layer_norm_flop_jit(
+    inputs: typing.List[object], outputs: typing.List[object]
+) -> typing.Counter[str]:
+    """
+    Count flops for layer normalization.
+    Layer norm: y = (x - mean) / sqrt(var + eps) * weight + bias
+    Roughly: 4 * number_of_elements operations (mean, var, normalize, scale)
+    Args:
+        inputs (list(torch._C.Value)): JIT values.
+        outputs (list(torch._C.Value)): The output shape.
+    Returns:
+        Counter: A Counter dictionary that records the number of flops.
+    """
+    try:
+        input_shape = get_shape(inputs[0])
+        # For layer norm, we count: 4 ops per element (mean, var, norm, scale)
+        flop = prod(input_shape) * 4
+        flop_counter = Counter({"layer_norm": flop})
+        return flop_counter
+    except:
+        return Counter({"layer_norm": 0})
 
 def baddbmm_flop_jit(
     inputs: typing.List[object], outputs: typing.List[object]
