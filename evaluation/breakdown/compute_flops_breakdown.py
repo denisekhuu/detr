@@ -76,7 +76,7 @@ def measure_time(model, inputs, N=10):
 def fmt_res(data):
     return data.mean(), data.std(), data.min(), data.max()
 
-args = HeadArgs()
+args = HeadArgs(number_of_heads=8)
 
 # get the first 100 images of COCO val2017
 PATH_TO_COCO = args.coco_path
@@ -91,7 +91,7 @@ results = {}
 for model_name in ['detr_resnet50']:
     results[model_name] = []
     with torch.no_grad():
-        for head in range(1, args.nheads + 1):
+        for head in range(4, args.nheads + 1):
             detr_tmp = []
             backbone_temp = []
             transformer_temp = []
