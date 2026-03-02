@@ -1,3 +1,4 @@
+import torch
 from torch import Tensor
 from torch.nn import functional as F
 from torch.nn.modules.normalization import LayerNorm
@@ -12,9 +13,10 @@ class SlicedLayerNorm(LayerNorm):
         Returns:
             Tensor: The normalized tensor.
         """
-        if effective_embed_dim:
-            if effective_embed_dim < 0 or effective_embed_dim > self.normalized_shape[0]:
-                raise ValueError(f"effective_embed_dim {effective_embed_dim} is out of bounds for normalized_shape {self.normalized_shape}")
+        if effective_embed_dim is not None:  # use explicit None check to avoid tensor-to-bool (TracerWarning)
+            if not torch.jit.is_scripting() and not torch.jit.is_tracing():
+                if effective_embed_dim < 0 or effective_embed_dim > self.normalized_shape[0]:
+                    raise ValueError(f"effective_embed_dim {effective_embed_dim} is out of bounds for normalized_shape {self.normalized_shape}")
             
             input = input[..., :effective_embed_dim]
             return F.layer_norm(input, (effective_embed_dim,),

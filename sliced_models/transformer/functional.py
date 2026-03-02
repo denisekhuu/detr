@@ -266,8 +266,11 @@ def _select_heads_projection_packed(
     if effective_heads is None:
         return _in_projection_packed(q, k, v, w, b)  
     
-    if effective_heads <= 0:
-        raise ValueError(f"effective_heads must be a positive integer, but got {effective_heads}")      
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing():
+        # During eager mode, we can perform checks on effective_heads.
+        if effective_heads is not None and effective_heads <= 0:
+            raise ValueError(f"effective_heads must be a positive integer, but got {effective_heads}")      
+        
     actual_embed_dim = effective_heads * head_dim
     
     # First reduce input tensors to selected heads
@@ -542,24 +545,33 @@ def multi_head_attention_forward(
         f"embed_dim {embed_dim} not divisible by num_heads {num_heads}"
     )
 
-    assert effective_heads <= num_heads if effective_heads is not None else True, (
-        f"effective_heads {effective_heads} must be less than or equal to num_heads {num_heads}"
-    )
+    if torch.jit.is_scripting():
+        # During scripting, we don't have access to the actual value of effective_heads, so we can't check it against num_heads.
+        # Instead, we check that if effective_heads is provided, it is a positive integer.
+        if effective_heads is not None:
+            assert isinstance(effective_heads, int) and effective_heads > 0, (
+                f"effective_heads must be a positive integer, but got {effective_heads}"
+            )
+        
+            assert effective_heads <= num_heads if effective_heads is not None else True, (
+                f"effective_heads {effective_heads} must be less than or equal to num_heads {num_heads}"
+            )
 
     # variables to contol the dimensions of effective heads
     effective_heads = effective_heads if effective_heads is not None else num_heads
     actual_embed_dim = effective_heads * head_dim
 
     
-    if use_separate_proj_weight:
-        # allow MHA to have different embedding dimensions when separate projection weights are used
-        assert key.shape[:2] == value.shape[:2], (
-            f"key's sequence and batch dims {key.shape[:2]} do not match value's {value.shape[:2]}"
-        )
-    else:
-        assert key.shape == value.shape, (
-            f"key shape {key.shape} does not match value shape {value.shape}"
-        )
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing():
+        if use_separate_proj_weight:
+            # allow MHA to have different embedding dimensions when separate projection weights are used
+            assert key.shape[:2] == value.shape[:2], (
+                f"key's sequence and batch dims {key.shape[:2]} do not match value's {value.shape[:2]}"
+            )
+        else:
+            assert key.shape == value.shape, (
+                f"key shape {key.shape} does not match value shape {value.shape}"
+            )
 
     #
     # compute in-projection
@@ -732,7 +744,7 @@ def multi_head_attention_forward(
 
     if need_weights:
         _B, _Nt, E = q.shape
-        q_scaled = q * math.sqrt(1.0 / float(E))
+        q_scaled = q * math.sqrt(1.0 / E)  # avoid float() cast on shape value (TracerWarning)
 
         assert not (is_causal and attn_mask is None), (
             "FIXME: is_causal not implemented for need_weights"

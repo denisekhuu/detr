@@ -8,6 +8,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 # ------------------------------------------------------------------------
 
+import torch
 from torch import Tensor
 from torch.nn import functional as F
 from torch.nn.modules.linear import Linear
@@ -24,14 +25,14 @@ class SlicedLinear(Linear):
         Returns:
             Tensor: The transformed tensor."""
 
-        if in_feature is not None and (in_feature < 0 or in_feature > self.weight.shape[1]):
-            raise ValueError(f"in_feature {in_feature} is out of bounds for weight with shape {self.weight.shape}")
-        
-        if out_feature is not None and (out_feature < 0 or out_feature > self.weight.shape[0]):
-            raise ValueError(f"out_feature {out_feature} is out of bounds for weight with shape {self.weight.shape}")
-
-        if (in_feature is None or in_feature == self.weight.shape[1]) and (out_feature is None or out_feature == self.weight.shape[0]):
-            return F.linear(input, self.weight, self.bias)
+        # Skip validation and the no-op fast-path during tracing to avoid tensor-to-bool TracerWarnings.
+        if not torch.jit.is_scripting() and not torch.jit.is_tracing():
+            if in_feature is not None and (in_feature < 0 or in_feature > self.weight.shape[1]):
+                raise ValueError(f"in_feature {in_feature} is out of bounds for weight with shape {self.weight.shape}")
+            if out_feature is not None and (out_feature < 0 or out_feature > self.weight.shape[0]):
+                raise ValueError(f"out_feature {out_feature} is out of bounds for weight with shape {self.weight.shape}")
+            if (in_feature is None or in_feature == self.weight.shape[1]) and (out_feature is None or out_feature == self.weight.shape[0]):
+                return F.linear(input, self.weight, self.bias)
         
     
         if out_feature is None:

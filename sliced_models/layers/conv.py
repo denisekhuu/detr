@@ -35,12 +35,11 @@ class SlicedConv2d(nn.Conv2d):
     def forward(self, input: Tensor, d_in: Optional[int] = None, d_out: Optional[int] = None) -> Tensor:
         # reduced the input channels to d_in if specified
         if d_in is not None or d_out is not None:
-            d_in = d_in if d_in is not None else self.in_channels
-            d_out = d_out if d_out is not None else self.out_channels
-            if d_in < input.shape[1]:
-                input = input[:, :d_in, :, :]
-            weight = self.weight[:d_out, :d_in, :, :] if d_in is not None else self.weight
-            bias = self.bias[:d_out] if self.bias is not None else None
+            _d_in: int = d_in if d_in is not None else self.in_channels
+            _d_out: int = d_out if d_out is not None else self.out_channels
+            input = input[:, :_d_in, :, :]
+            weight = self.weight[:_d_out, :_d_in, :, :]
+            bias = self.bias[:_d_out] if self.bias is not None else None
             return self._conv_forward(input, weight, bias)
     
         

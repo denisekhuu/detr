@@ -1,296 +1,248 @@
-# taken from detectron2 with a few modifications
-# to include bmm and a few other ops
-# https://github.com/facebookresearch/detectron2/blob/master/detectron2/utils/analysis.py
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-
-import logging
-import typing
-from collections import Counter, defaultdict
-import torch
-import torch.nn as nn
-from functools import partial
-
-from jit_handles import (
-    addmm_flop_jit,
-    batchnorm_flop_jit,
-    conv_flop_jit,
-    einsum_flop_jit,
-    matmul_flop_jit,
-    bmm_flop_jit,
-    basic_binary_op_flop_jit,
-    rsqrt_flop_jit,
-    softmax_flop_jit,
-    dropout_flop_jit,
-    linear_flop_jit,
-    baddbmm_flop_jit,
-    layer_norm_flop_jit
-)
-
-# A dictionary that maps supported operations to their flop count jit handles.
-_SUPPORTED_OPS: typing.Dict[str, typing.Callable] = {
-    "aten::addmm": addmm_flop_jit,
-    "aten::_convolution": conv_flop_jit,
-    "aten::einsum": einsum_flop_jit,
-    "aten::matmul": matmul_flop_jit,
-    "aten::batch_norm": batchnorm_flop_jit,
-    "aten::bmm": bmm_flop_jit,
-    "aten::add": partial(basic_binary_op_flop_jit, name='aten::add'),
-    "aten::add_": partial(basic_binary_op_flop_jit, name='aten::add_'),
-    "aten::mul": partial(basic_binary_op_flop_jit, name='aten::mul'),
-    "aten::sub": partial(basic_binary_op_flop_jit, name='aten::sub'),
-    "aten::div": partial(basic_binary_op_flop_jit, name='aten::div'),
-    "aten::floor_divide": partial(basic_binary_op_flop_jit, name='aten::floor_divide'),
-    "aten::relu": partial(basic_binary_op_flop_jit, name='aten::relu'),
-    "aten::relu_": partial(basic_binary_op_flop_jit, name='aten::relu_'),
-    "aten::rsqrt": rsqrt_flop_jit,
-    "aten::softmax": softmax_flop_jit,
-    "aten::dropout": dropout_flop_jit,
-    "aten::linear": linear_flop_jit,
-    "aten::baddbmm": baddbmm_flop_jit,
-    "aten::layer_norm": layer_norm_flop_jit,
-}
-
-# A list that contains ignored operations.
-_IGNORED_OPS: typing.List[str] = [
-    "aten::Int",
-    "aten::__and__",
-    "aten::arange",
-    "aten::cat",
-    "aten::clamp",
-    "aten::clamp_",
-    "aten::contiguous",
-    "aten::copy_",
-    "aten::detach",
-    "aten::empty",
-    "aten::eq",
-    "aten::expand",
-    "aten::flatten",
-    "aten::floor",
-    "aten::full",
-    "aten::gt",
-    "aten::index",
-    "aten::index_put_",
-    "aten::max",
-    "aten::nonzero",
-    "aten::permute",
-    "aten::remainder",
-    "aten::reshape",
-    "aten::select",
-    "aten::size",
-    "aten::slice",
-    "aten::split_with_sizes",
-    "aten::squeeze",
-    "aten::t",
-    "aten::to",
-    "aten::transpose",
-    "aten::unsqueeze",
-    "aten::view",
-    "aten::zeros",
-    "aten::zeros_like",
-    "prim::Constant",
-    "prim::Int",
-    "prim::ListConstruct",
-    "prim::ListUnpack",
-    "prim::NumToTensor",
-    "prim::TupleConstruct",
-]
-
-_HAS_ALREADY_SKIPPED = False
-
-def get_shape(val: object) -> typing.List[int]:
-    """
-    Get the shapes from a jit value object.
-    Args:
-        val (torch._C.Value): jit value object.
-    Returns:
-        list(int): return a list of ints.
-    """
-    if val.isCompleteTensor():  # pyre-ignore
-        r = val.type().sizes()  # pyre-ignore
-        if not r:
-            r = [1]
-        return r
-    elif val.type().kind() in ("IntType", "FloatType"):
-        return [1]
-    else:
-        raise ValueError()
+{
+  "detr_resnet50": [
+    {
+      "heads": 1,
+      "detr_flops": [
+        74.09107670051999,
+        8.213158008684918,
+        52.95232691299999,
+        88.88330118
+      ],
+      "backbone_flops": [
+        73.51353037660002,
+        8.119762965716275,
+        52.60850196099999,
+        88.13028367800001
+      ],
+      "transformer_flops": [
+        0.5165925396,
+        0.08719916387697611,
+        0.299754552,
+        0.681094302
+      ],
+      "time": [
+        0.04210080480575562,
+        0.004401577501063474,
+        0.031978702545166014,
+        0.04932904243469238
+      ]
+    },
+    {
+      "heads": 2,
+      "detr_flops": [
+        74.93674637460002,
+        8.332898226613008,
+        53.49462301100001,
+        89.94969622800004
+      ],
+      "backbone_flops": [
+        73.51355866844001,
+        8.119766083251207,
+        52.60852200899999,
+        88.13031732600001
+      ],
+      "transformer_flops": [
+        1.29882253752,
+        0.200722240943053,
+        0.7955026019999999,
+        1.673074902
+      ],
+      "time": [
+        0.04340027308464049,
+        0.004498676754312859,
+        0.032554793357849124,
+        0.05209758281707764
+      ]
+    },
+    {
+      "heads": 3,
+      "detr_flops": [
+        76.05051120899999,
+        8.478982096513313,
+        54.235370309,
+        91.32943527600003
+      ],
+      "backbone_flops": [
+        73.51358696028002,
+        8.119769200786145,
+        52.60854205699999,
+        88.13035097400002
+      ],
+      "transformer_flops": [
+        2.3466900957600005,
+        0.3405843356135496,
+        1.4872442519999998,
+        2.975941902
+      ],
+      "time": [
+        0.043038805007934576,
+        0.004340685891193509,
+        0.03327503204345703,
+        0.05016021728515625
+      ]
+    },
+    {
+      "heads": 4,
+      "detr_flops": [
+        77.43237120372001,
+        8.651411547263852,
+        55.17456880699998,
+        93.022518324
+      ],
+      "backbone_flops": [
+        73.51361525212002,
+        8.119772318321084,
+        52.60856210499998,
+        88.13038462200002
+      ],
+      "transformer_flops": [
+        3.66019521432,
+        0.5067942735122503,
+        2.3749795020000004,
+        4.589695301999999
+      ],
+      "time": [
+        0.043377383947372436,
+        0.004399469800128976,
+        0.03338510990142822,
+        0.0512502908706665
+      ]
+    },
     
-def flop_count(
-    model: nn.Module,
-    inputs: typing.Tuple[object, ...],
-    whitelist: typing.Union[typing.List[str], None] = None,
-    customized_ops: typing.Union[
-        typing.Dict[str, typing.Callable], None
-    ] = None,
-) -> typing.DefaultDict[str, float]:
-    """
-    Given a model and an input to the model, compute the Gflops of the given
-    model. Note the input should have a batch size of 1.
-    Args:
-        model (nn.Module): The model to compute flop counts.
-        inputs (tuple): Inputs that are passed to `model` to count flops.
-            Inputs need to be in a tuple.
-        whitelist (list(str)): Whitelist of operations that will be counted. It
-            needs to be a subset of _SUPPORTED_OPS. By default, the function
-            computes flops for all supported operations.
-        customized_ops (dict(str,Callable)) : A dictionary contains customized
-            operations and their flop handles. If customized_ops contains an
-            operation in _SUPPORTED_OPS, then the default handle in
-             _SUPPORTED_OPS will be overwritten.
-    Returns:
-        defaultdict: A dictionary that records the number of gflops for each
-            operation.
-    """
-    # Copy _SUPPORTED_OPS to flop_count_ops.
-    # If customized_ops is provided, update _SUPPORTED_OPS.
-    flop_count_ops = _SUPPORTED_OPS.copy()
-    if customized_ops:
-        flop_count_ops.update(customized_ops)
-
-    # If whitelist is None, count flops for all suported operations.
-    if whitelist is None:
-        whitelist_set = set(flop_count_ops.keys())
-    else:
-        whitelist_set = set(whitelist)
-
-    # Torch script does not support parallell torch models.
-    if isinstance(
-        model,
-        (nn.parallel.distributed.DistributedDataParallel, nn.DataParallel),
-    ):
-        model = model.module  # pyre-ignore
-
-    assert set(whitelist_set).issubset(
-        flop_count_ops
-    ), "whitelist needs to be a subset of _SUPPORTED_OPS and customized_ops."
-    assert isinstance(inputs, tuple), "Inputs need to be in a tuple."
-
-    # Compatibility with torch.jit.
-    if hasattr(torch.jit, "get_trace_graph"):
-        trace, _ = torch.jit.get_trace_graph(model, inputs)
-        trace_nodes = trace.graph().nodes()
-    else:
-        trace, _ = torch.jit._get_trace_graph(model, inputs)
-        trace_nodes = trace.nodes()
-
-    skipped_ops = Counter()
-    total_flop_counter = Counter()
-
-    for node in trace_nodes:
-        kind = node.kind()
-        if kind not in whitelist_set:
-            # If the operation is not in _IGNORED_OPS, count skipped operations.
-            if kind not in _IGNORED_OPS:
-                skipped_ops[kind] += 1
-            continue
-
-        handle_count = flop_count_ops.get(kind, None)
-        if handle_count is None:
-            continue
-
-        inputs, outputs = list(node.inputs()), list(node.outputs())
-        flops_counter = handle_count(inputs, outputs)
-        total_flop_counter += flops_counter
-
-    global _HAS_ALREADY_SKIPPED
-    if len(skipped_ops) > 0 and not _HAS_ALREADY_SKIPPED:
-        _HAS_ALREADY_SKIPPED = True
-        for op, freq in skipped_ops.items():
-            logging.warning("Skipped operation {} {} time(s)".format(op, freq))
-
-    # Convert flop count to gigaflops.
-    final_count = defaultdict(float)
-    for op in total_flop_counter:
-        final_count[op] = total_flop_counter[op] / 1e9
-
-    return final_count
-
-def custom_flop_count(
-    model: nn.Module,
-    inputs: typing.Tuple[object, ...],
-    whitelist: typing.Union[typing.List[str], None] = None,
-    flop_count_ops = None,
-    customized_ops: typing.Union[
-        typing.Dict[str, typing.Callable], None
-    ] = None,
-) -> typing.DefaultDict[str, float]:
-    """
-    Given a model and an input to the model, compute the Gflops of the given
-    model. Note the input should have a batch size of 1.
-    Args:
-        model (nn.Module): The model to compute flop counts.
-        inputs (tuple): Inputs that are passed to `model` to count flops.
-            Inputs need to be in a tuple.
-        whitelist (list(str)): Whitelist of operations that will be counted. It
-            needs to be a subset of _SUPPORTED_OPS. By default, the function
-            computes flops for all supported operations.
-        customized_ops (dict(str,Callable)) : A dictionary contains customized
-            operations and their flop handles. If customized_ops contains an
-            operation in _SUPPORTED_OPS, then the default handle in
-             _SUPPORTED_OPS will be overwritten.
-    Returns:
-        defaultdict: A dictionary that records the number of gflops for each
-            operation.
-    """
-    # Copy _SUPPORTED_OPS to flop_count_ops.
-    # If customized_ops is provided, update _SUPPORTED_OPS.
-    if customized_ops:
-        flop_count_ops.update(customized_ops)
-
-    # If whitelist is None, count flops for all suported operations.
-    if whitelist is None:
-        whitelist_set = set(flop_count_ops.keys())
-    else:
-        whitelist_set = set(whitelist)
-
-    # Torch script does not support parallell torch models.
-    if isinstance(
-        model,
-        (nn.parallel.distributed.DistributedDataParallel, nn.DataParallel),
-    ):
-        model = model.module  # pyre-ignore
-
-    assert set(whitelist_set).issubset(
-        flop_count_ops
-    ), "whitelist needs to be a subset of _SUPPORTED_OPS and customized_ops."
-    assert isinstance(inputs, tuple), "Inputs need to be in a tuple."
-
-    # Compatibility with torch.jit.
-    if hasattr(torch.jit, "get_trace_graph"):
-        trace, _ = torch.jit.get_trace_graph(model, inputs)
-        trace_nodes = trace.graph().nodes()
-    else:
-        trace, _ = torch.jit._get_trace_graph(model, inputs)
-        trace_nodes = trace.nodes()
-
-    skipped_ops = Counter()
-    total_flop_counter = Counter()
-
-    for node in trace_nodes:
-        kind = node.kind()
-        if kind not in whitelist_set:
-            # If the operation is not in _IGNORED_OPS, count skipped operations.
-            if kind not in _IGNORED_OPS:
-                skipped_ops[kind] += 1
-            continue
-
-        handle_count = flop_count_ops.get(kind, None)
-        if handle_count is None:
-            continue
-
-        inputs, outputs = list(node.inputs()), list(node.outputs())
-        flops_counter = handle_count(inputs, outputs)
-        total_flop_counter += flops_counter
-
-    global _HAS_ALREADY_SKIPPED
-    if len(skipped_ops) > 0 and not _HAS_ALREADY_SKIPPED:
-        _HAS_ALREADY_SKIPPED = True
-        for op, freq in skipped_ops.items():
-            logging.warning("Skipped operation {} {} time(s)".format(op, freq))
-
-    # Convert flop count to gigaflops.
-    final_count = defaultdict(float)
-    for op in total_flop_counter:
-        final_count[op] = total_flop_counter[op] / 1e9
-
-    return final_count
+    {
+      "heads": 4,
+      "detr_flops": [
+        77.43237120372001,
+        8.651411547263852,
+        55.17456880699998,
+        93.022518324
+      ],
+      "backbone_flops": [
+        73.51361525212002,
+        8.119772318321084,
+        52.60856210499998,
+        88.13038462200002
+      ],
+      "transformer_flops": [
+        3.66019521432,
+        0.5067942735122503,
+        2.3749795020000004,
+        4.589695301999999
+      ],
+      "time": [
+        0.0433581018447876,
+        0.004503698186191796,
+        0.033034110069274904,
+        0.05232369899749756
+      ]
+    },
+    {
+      "heads": 5,
+      "detr_flops": [
+        79.08232635876003,
+        8.850188757062327,
+        56.312218505000004,
+        95.02894537200005
+      ],
+      "backbone_flops": [
+        73.51364354396,
+        8.11977543585602,
+        52.608582152999986,
+        88.13041827000002
+      ],
+      "transformer_flops": [
+        5.239337893199999,
+        0.6993575558029035,
+        3.4587083520000004,
+        6.5143351019999995
+      ],
+      "time": [
+        0.04395981931686401,
+        0.004471423442766276,
+        0.03343970775604248,
+        0.05191969871520996
+      ]
+    },
+    {
+      "heads": 6,
+      "detr_flops": [
+        81.00037667411999,
+        9.07531606650512,
+        57.64831940299999,
+        97.34871642000003
+      ],
+      "backbone_flops": [
+        73.5136718358,
+        8.11977855339096,
+        52.60860220099999,
+        88.130451918
+      ],
+      "transformer_flops": [
+        7.0841181324,
+        0.9182777893606199,
+        4.738430802000001,
+        8.749861302
+      ],
+      "time": [
+        0.04465710687637328,
+        0.004769325966288123,
+        0.03409395217895508,
+        0.0531735897064209
+      ]
+    },
+    {
+      "heads": 7,
+      "detr_flops": [
+        83.1865221498,
+        9.326795895157835,
+        59.182871500999994,
+        99.98183146800002
+      ],
+      "backbone_flops": [
+        73.51370012763999,
+        8.119781670925905,
+        52.60862224899999,
+        88.13048556600002
+      ],
+      "transformer_flops": [
+        9.194535931919999,
+        1.1635574373058275,
+        6.214146852000002,
+        11.296273902
+      ],
+      "time": [
+        0.04513977694511413,
+        0.004700308000533571,
+        0.03431887626647949,
+        0.05454154014587402
+      ]
+    },
+    {
+      "heads": 8,
+      "detr_flops": [
+        85.64076278579999,
+        9.604630665916863,
+        60.91587479900001,
+        102.92829051599999
+      ],
+      "backbone_flops": [
+        73.51372841947999,
+        8.119784788460855,
+        52.608642296999996,
+        88.13051921400002
+      ],
+      "transformer_flops": [
+        11.57059129176,
+        1.4351982389710631,
+        7.885856502,
+        14.153572901999997
+      ],
+      "time": [
+        0.047099150657653806,
+        0.005506645109327442,
+        0.035411643981933597,
+        0.05520367622375488
+      ]
+    }
+  ]
+}

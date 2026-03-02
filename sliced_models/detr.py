@@ -81,8 +81,10 @@ class SlicedDETR(nn.Module):
         # this is a workaround to make torchscript happy, as torchscript
         # doesn't support dictionary with non-homogeneous values, such
         # as a dict having both a Tensor and a list.
+        # Use unbind(0) to convert tensors to a Python list before slicing,
+        # avoiding the TracerWarning about iterating over a tensor.
         return [{'pred_logits': a, 'pred_boxes': b}
-                for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
+                for a, b in zip(outputs_class.unbind(0)[:-1], outputs_coord.unbind(0)[:-1])]
 
 
 from models.detr import DETR, SetCriterion, PostProcess

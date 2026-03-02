@@ -25,7 +25,7 @@ def _get_activation_fn(activation):
 
 def _slice_embedding_dim(tensor, effective_embed_dim: int = None):
     """Slice the embedding dimension of a tensor if effective_embed_dim is provided."""
-    if effective_embed_dim:
+    if effective_embed_dim is not None:  # explicit None check avoids tensor-to-bool (TracerWarning)
         return tensor[..., :effective_embed_dim]
     return tensor
 
