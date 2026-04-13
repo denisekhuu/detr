@@ -15,4 +15,4 @@ source $WORK/workspace/venv/bin/activate
 echo $SLURM_JOBID  &> timm.3heads.${SLURM_JOBID}.log 
 echo "Distributed training: gpu:h100:2"  >> timm.3heads.${SLURM_JOBID}.log 
 echo "3 Heads; hidden_dim = 96 "  >> timm.3heads.${SLURM_JOBID}.log 
-python -u -m torch.distributed.launch --nproc_per_node=2 --use_env main.py --coco_path $WORK/workspace/data/coco --hidden_dim 96 --dim_feedforward 768 --nheads 3 --epochs 300 --batch_size 8 --world_size 2 --dist_url env:// --device cuda --output_dir $WORK/workspace/output/detr/dist/3heads/${SLURM_JOBID} >> timm.3heads.${SLURM_JOBID}.log
+python -u -m torch.distributed.launch --nproc_per_node=2 --use_env main.py --coco_path $WORK/workspace/data/coco --world_size 2 --hidden_dim 96 --dim_feedforward 768 --nheads 3 --epochs 300 --batch_size 8 --world_size 2 --dist_url env:// --device cuda --output_dir $WORK/workspace/output/detr/dist/3heads/${SLURM_JOBID} >> timm.3heads.${SLURM_JOBID}.log
